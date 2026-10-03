@@ -24,18 +24,30 @@ characters, saying what happened in the new lines.
 - Keep the concrete numbers that matter: durations, sizes, token counts,
   status codes, error messages.
 - Say what changed since the previous summary. Do not repeat it.
+- Only explain what the lines show. Do not guess causes or speculate
+  ("likely", "suggesting", "probably"). If the lines do not say why
+  something happened, leave the why out.
 - If the new lines are routine (polling, repeated similar requests), still
   reply, but condense them: "14 more /api/tags polls, all 200".
 - No preamble, no markdown, no timestamp, no quotes around the reply.`
 
 // System assembles the system prompt from the base instructions, an optional
-// profile describing the log format, and an optional focus.
-func System(profile, focus string) string {
+// profile describing the log format, an optional filter description, and an
+// optional focus.
+func System(profile, filter, focus string) string {
 	var b strings.Builder
 	b.WriteString(base)
 	if profile != "" {
 		b.WriteString("\n\n# Log format\n\n")
 		b.WriteString(strings.TrimSpace(profile))
+	}
+	if filter != "" {
+		b.WriteString("\n\n# Filter\n\n")
+		b.WriteString("Log lines have been filtered according to: ")
+		b.WriteString(strings.TrimSpace(filter))
+		b.WriteString("\n\nYou do not see the whole log history. Other lines were dropped before " +
+			"reaching you, so their absence does not mean nothing else happened, and the " +
+			"reason for what you see may be in lines you do not have.")
 	}
 	if focus != "" {
 		b.WriteString("\n\n# Focus\n\n")

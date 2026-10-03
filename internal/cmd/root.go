@@ -4,10 +4,13 @@ package cmd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"time"
 
+	"github.com/mikiobraun/lx/internal/filter"
 	"github.com/mikiobraun/lx/internal/llm"
 	"github.com/mikiobraun/lx/internal/narrate"
 	"github.com/mikiobraun/lx/internal/prompt"
@@ -18,8 +21,9 @@ import (
 func NewRootCmd() *cobra.Command {
 	var (
 		profile  string
-		focus    string
-		noFollow bool
+		focus      string
+		filterDesc string
+		noFollow   bool
 		cfg      narrate.Config
 	)
 
@@ -47,7 +51,7 @@ func NewRootCmd() *cobra.Command {
 					return err
 				}
 			}
-			system := prompt.System(profileText, focus)
+			system := prompt.System(profileText, filterDesc, focus)
 
 			var input io.Reader = os.Stdin
 			follow := false // stdin ends at EOF; following only applies to files
@@ -73,7 +77,24 @@ func NewRootCmd() *cobra.Command {
 				Err: cmd.ErrOrStderr(),
 				Now: time.Now,
 			}
-			err = n.Run(cmd.Context(), narrate.ReadLines(cmd.Context(), input, follow))
+			var re *regexp.Regexp
+			if filterDesc != "" {
+				if re, err = filter.Compile(cmd.Context(), client, profileText, filterDesc); err != nil {
+					return err
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "lx: filter: %s\n", re)
+			}
+
+			lines := narrate.ReadLines(cmd.Context(), input, follow)
+			if re != nil {
+				var counts filter.Counts
+				lines = filter.Lines(cmd.Context(), lines, re, &counts)
+				defer func() {
+					fmt.Fprintf(cmd.ErrOrStderr(), "lx: filter kept %d of %d lines\n",
+						counts.Kept.Load(), counts.Seen.Load())
+				}()
+			}
+			err = n.Run(cmd.Context(), lines)
 			if errors.Is(err, context.Canceled) {
 				return nil // interrupted by the user
 			}
@@ -84,6 +105,7 @@ func NewRootCmd() *cobra.Command {
 	fl := root.Flags()
 	fl.StringVar(&profile, "profile", "", "log format profile: ./<name>.md, else <profile dir>/<name>.md")
 	fl.StringVar(&focus, "focus", "", "what the narrative should pay attention to")
+	fl.StringVar(&filterDesc, "filter", "", "describe which lines to keep; compiled once into a regex, applied before summarizing")
 	fl.BoolVar(&noFollow, "no-follow", false, "read the file to its end, summarize, and exit")
 	fl.DurationVar(&cfg.Debounce, "debounce", 2*time.Second, "summarize after no new line for this long")
 	fl.DurationVar(&cfg.MaxInterval, "max-interval", 10*time.Second, "summarize at the latest this long after a batch starts")
