@@ -42,31 +42,45 @@ Key events, in the order their lines appear:
 - Startup (no endpoint; service start): `source=routes.go msg="server
   config"` (all OLLAMA_* settings, e.g. OLLAMA_CONTEXT_LENGTH,
   OLLAMA_KEEP_ALIVE), `msg="Listening on 127.0.0.1:11434 (version 0.12.10)"`,
-  `source=types.go msg="inference compute"` per device (`library=cpu` means
-  no GPU; total and available memory), and possibly `msg="entering low vram
-  mode"`.
+  `msg="discovering available GPUs..."` followed by one or more
+  `msg="starting runner" cmd="... runner --ollama-engine --port N"` lines.
+  These are short-lived probes for GPU discovery, not models being loaded:
+  their `cmd` has no `--model`. Then `source=types.go msg="inference
+  compute"` per device (`library=cpu` means no GPU; total and available
+  memory), and possibly `msg="entering low vram mode"`.
 - Model pull (`/api/pull`): `source=download.go msg="downloading <digest>
   in N <size> part(s)"` per layer, then the GIN line for `/api/pull` with
   the total duration.
-- Model load (triggered by an inference or embedding endpoint):
-  1. `source=memory.go msg="new model will fit in available system memory
+- Model load (triggered only by an inference or embedding endpoint, never
+  by `/api/show`, `/api/pull` or polling):
+  1. A first `llama_model_loader:` / `print_info:` burst: the server reads
+     the model's metadata before starting a runner.
+  2. `source=server.go msg="starting runner" cmd="... runner --model
+     <blob path> ..."` (with `--model`, unlike the startup probes),
+     `msg="system memory"` (total, free, free_swap),
+     `source=memory.go msg="new model will fit in available system memory
      for CPU inference, loading"` (or the VRAM/GPU variant) with
-     `required=` memory.
-  2. `source=server.go msg="system memory"` (total, free, free_swap),
-     `msg=offload library=cpu layers.model=N layers.offload=M
-     memory.required.full=...`. M < N means the model is split between GPU
-     and CPU; M = 0 means CPU only.
-  3. `source=server.go msg="starting runner"`, `source=runner.go
-     msg="starting go runner"`, `msg=load request="{... KvSize:4096
-     NumThreads:4 ...}"` (KvSize is the context size).
-  4. The runner burst: `llama_model_loader: - kv 2: general.name str =
-     Llama 3.2 1B Instruct` (model name), `print_info: file type = Q8_0`
-     (quantization), `print_info: model params = 1.24 B`,
-     `load_tensors: CPU model buffer size = ...`, `llama_kv_cache: size =
-     ...`, `llama_context: ... compute buffer size = ...`.
-  5. `source=server.go msg="llama runner started in X seconds"` and
-     `source=sched.go msg="loaded runners" count=N` (models in memory).
-  6. The GIN line of the request that caused the load.
+     `required=` memory, and `msg=offload library=cpu layers.model=N
+     layers.offload=M memory.required.full=...`. M < N means the model is
+     split between GPU and CPU; M = 0 means CPU only.
+  3. `source=runner.go msg="starting go runner"`, `msg=load request="{...
+     KvSize:4096 NumThreads:4 ...}"` (KvSize is the context size).
+  4. A second, larger burst from the runner itself: `llama_model_loader: -
+     kv 2: general.name str = Llama 3.2 1B Instruct` (model name),
+     `print_info: file type = Q8_0` (quantization), `print_info: model
+     params = 1.24 B`, `load_tensors: CPU model buffer size = ...`,
+     `llama_kv_cache: size = ...`, `llama_context: ... compute buffer size
+     = ...`.
+  5. `source=server.go msg="llama runner started in X seconds"` (often
+     logged twice for one load) and `source=sched.go msg="loaded runners"
+     count=N` (models in memory).
+  6. The GIN line of the inference request that caused the load, with a
+     duration that includes the load.
+
+  GIN lines that appear just *before* a load, typically `HEAD /` and
+  `/api/show` from `ollama run`, belong to requests that had already
+  finished. They did not cause the load; the request that did is the one
+  whose GIN line comes after it.
 - Inference: only the GIN line, with status and duration. Per-request
   timings (prompt eval, tokens/s) are not logged at INFO level.
 - Unloading after keep-alive expires is not logged at INFO level. A later
