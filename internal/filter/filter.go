@@ -25,14 +25,17 @@ regexp package (RE2 syntax). Lines that match are kept, all others are dropped.
 - Prefer the markers the log format actually uses (level fields, status codes,
   paths, function prefixes) over loose words that may appear anywhere.`
 
+// Chat sends messages to the model and returns its reply text.
+type Chat func(ctx context.Context, messages []llm.Message) (string, error)
+
 // Compile asks the model for a regular expression matching the description.
 // The profile, if any, tells the model what the lines look like.
-func Compile(ctx context.Context, client *llm.Client, profile, description string) (*regexp.Regexp, error) {
+func Compile(ctx context.Context, chat Chat, profile, description string) (*regexp.Regexp, error) {
 	sys := system
 	if profile != "" {
 		sys += "\n\n# Log format\n\n" + strings.TrimSpace(profile)
 	}
-	reply, err := client.Chat(ctx, []llm.Message{
+	reply, err := chat(ctx, []llm.Message{
 		{Role: "system", Content: sys},
 		{Role: "user", Content: "Keep these lines: " + description},
 	})

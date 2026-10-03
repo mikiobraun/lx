@@ -24,6 +24,9 @@ func NewRootCmd() *cobra.Command {
 		focus      string
 		filterDesc string
 		noFollow   bool
+		debug      bool
+
+		reasoningEffort string
 		cfg      narrate.Config
 	)
 
@@ -45,6 +48,7 @@ func NewRootCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			client.ReasoningEffort = reasoningEffort
 			var profileText string
 			if profile != "" {
 				if profileText, err = prompt.LoadProfile(profile); err != nil {
@@ -65,10 +69,21 @@ func NewRootCmd() *cobra.Command {
 				follow = !noFollow
 			}
 
+			// chat calls the model, printing timings and token counts with --debug.
+			chat := func(label string) filter.Chat {
+				return func(ctx context.Context, messages []llm.Message) (string, error) {
+					reply, err := client.Chat(ctx, messages)
+					if err == nil && debug {
+						fmt.Fprintf(cmd.ErrOrStderr(), "lx: debug: %s: %s\n", label, reply.Stats())
+					}
+					return reply.Content, err
+				}
+			}
+
 			n := &narrate.Narrator{
 				Config: cfg,
 				Summarize: func(ctx context.Context, previous string, lines []string) (string, error) {
-					return client.Chat(ctx, []llm.Message{
+					return chat(fmt.Sprintf("summary of %d lines", len(lines)))(ctx, []llm.Message{
 						{Role: "system", Content: system},
 						{Role: "user", Content: prompt.User(previous, lines)},
 					})
@@ -79,7 +94,7 @@ func NewRootCmd() *cobra.Command {
 			}
 			var re *regexp.Regexp
 			if filterDesc != "" {
-				if re, err = filter.Compile(cmd.Context(), client, profileText, filterDesc); err != nil {
+				if re, err = filter.Compile(cmd.Context(), chat("filter"), profileText, filterDesc); err != nil {
 					return err
 				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "lx: filter: %s\n", re)
@@ -107,6 +122,8 @@ func NewRootCmd() *cobra.Command {
 	fl.StringVar(&focus, "focus", "", "what the narrative should pay attention to")
 	fl.StringVar(&filterDesc, "filter", "", "describe which lines to keep; compiled once into a regex, applied before summarizing")
 	fl.BoolVar(&noFollow, "no-follow", false, "read the file to its end, summarize, and exit")
+	fl.StringVar(&reasoningEffort, "reasoning-effort", "", "reasoning_effort for reasoning models (low, medium, high); default: the server's")
+	fl.BoolVar(&debug, "debug", false, "print timings and token counts of each model call to stderr")
 	fl.DurationVar(&cfg.Debounce, "debounce", 2*time.Second, "summarize after no new line for this long")
 	fl.DurationVar(&cfg.MaxInterval, "max-interval", 10*time.Second, "summarize at the latest this long after a batch starts")
 	fl.IntVar(&cfg.Window, "window", 100, "send at most this many of the newest lines per summary")
