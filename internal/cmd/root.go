@@ -20,14 +20,14 @@ import (
 // NewRootCmd builds the lx command. The root command is narrate mode.
 func NewRootCmd() *cobra.Command {
 	var (
-		profile  string
+		profile    string
 		focus      string
 		filterDesc string
 		noFollow   bool
 		debug      bool
 
 		reasoningEffort string
-		cfg      narrate.Config
+		cfg             narrate.Config
 	)
 
 	root := &cobra.Command{
@@ -35,8 +35,9 @@ func NewRootCmd() *cobra.Command {
 		Short: "Narrate a log stream using an LLM",
 		Long: "lx tails a log file or stdin and periodically asks an LLM to summarize\n" +
 			"the new lines, printing a running narrative of what happened.\n\n" +
-			"The model comes from the environment that `mf exec` sets up:\n\n" +
-			"  tail -f server.log | mf exec local -- lx --profile ollama",
+			"The model is an OpenAI-compatible endpoint taken from the environment:\n" +
+			"OPENAI_BASE_URL, OPENAI_MODEL and, if the endpoint needs one, OPENAI_API_KEY.\n\n" +
+			"  tail -f server.log | lx --profile ollama",
 		Args:          cobra.MaximumNArgs(1),
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -88,9 +89,10 @@ func NewRootCmd() *cobra.Command {
 						{Role: "user", Content: prompt.User(previous, lines)},
 					})
 				},
-				Out: cmd.OutOrStdout(),
-				Err: cmd.ErrOrStderr(),
-				Now: time.Now,
+				Out:   cmd.OutOrStdout(),
+				Err:   cmd.ErrOrStderr(),
+				Debug: debug,
+				Now:   time.Now,
 			}
 			var re *regexp.Regexp
 			if filterDesc != "" {

@@ -98,8 +98,8 @@ func TestPassKeepsPrevious(t *testing.T) {
 	if calls[2].previous != "loaded" {
 		t.Errorf("previous after pass = %q, want loaded", calls[2].previous)
 	}
-	if strings.Count(out, prompt.Pass) != 1 || strings.Count(out, "\n") != 3 {
-		t.Errorf("output = %q, want two summary lines and one pass", out)
+	if strings.Contains(out, prompt.Pass) || strings.Count(out, "\n") != 2 {
+		t.Errorf("output = %q, want two summary lines and no pass", out)
 	}
 }
 

@@ -28,6 +28,7 @@ type Narrator struct {
 	Summarize Summarizer
 	Out       io.Writer // summaries
 	Err       io.Writer // warnings and errors
+	Debug     bool      // report passed batches on Err
 	Now       func() time.Time
 }
 
@@ -109,8 +110,9 @@ func (n *Narrator) Run(ctx context.Context, lines <-chan string) error {
 				fmt.Fprintf(n.Err, "lx: %v\n", r.err)
 			case strings.TrimSpace(r.summary) == prompt.Pass:
 				// Nothing to report; keep the previous summary for continuity.
-				// Printed for now so the batching can be observed.
-				fmt.Fprintf(n.Out, "[%s] %s\n", n.Now().Format("15:04:05"), prompt.Pass)
+				if n.Debug {
+					fmt.Fprintf(n.Err, "lx: debug: %s\n", prompt.Pass)
+				}
 			default:
 				previous = strings.TrimSpace(r.summary)
 				fmt.Fprintf(n.Out, "[%s] %s\n", n.Now().Format("15:04:05"), previous)

@@ -27,12 +27,12 @@ type Client struct {
 	ReasoningEffort string
 }
 
-// FromEnv builds a client from the variables `mf exec` sets.
+// FromEnv builds a client from the OPENAI_* environment variables.
 func FromEnv() (*Client, error) {
 	base := os.Getenv("OPENAI_BASE_URL")
 	model := os.Getenv("OPENAI_MODEL")
 	if base == "" || model == "" {
-		return nil, errors.New("OPENAI_BASE_URL and OPENAI_MODEL must be set; run lx through mf, e.g. `mf exec local -- lx`")
+		return nil, errors.New("OPENAI_BASE_URL and OPENAI_MODEL must be set to an OpenAI-compatible endpoint and a model ID")
 	}
 	return &Client{
 		BaseURL: strings.TrimRight(base, "/"),
@@ -99,7 +99,7 @@ type chatRequest struct {
 	Messages        []Message `json:"messages"`
 	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
 	Stream          bool      `json:"stream"`
-	StreamOptions struct {
+	StreamOptions   struct {
 		IncludeUsage bool `json:"include_usage"`
 	} `json:"stream_options"`
 }
